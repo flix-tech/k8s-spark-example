@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+spec:
+  #use spot instance
+  tolerations:
+    - key: "node-role.kubernetes.io/spot"
+      operator: "Exists"
+  #set low priority
+  priorityClassName: batch-resumable

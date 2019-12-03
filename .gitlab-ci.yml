@@ -1,0 +1,117 @@
+---
+stages:
+  - deploy
+  - rollback
+# ENV:(local|dev|stg|prod)
+
+# -------------------------------------------------------
+# -- templates
+# -------------------------------------------------------
+
+# -- parameters
+
+.image_template: &image_definition
+  image: dcr.mfb.io/data/spark-runner-image:latest
+
+.tag_template_dev: &tag_definition_team_runner_dev
+  tags:
+    - lambda-dev-eu-west-1
+
+.tag_template_prod: &tag_definition_team_runner_prod
+  tags:
+    - lambda-prod-eu-west-1
+
+# -- environments
+
+.dev_template: &dev_environment
+  variables:
+    ENV: "dev"
+    DOCKER_REGISTRY: ci-dump-dcr.mfb.io
+    NAMESPACE: data-flux-dev
+    KUBE_CONTEXT: ew1d2-dev
+  environment:
+    name: dev
+  except:
+    - master
+
+.stg_template: &stg_environment
+  variables:
+    ENV: "stg"
+    DOCKER_REGISTRY: ci-dump-dcr.mfb.io
+    NAMESPACE: data-flux-stg
+    KUBE_CONTEXT: ew1d2-stg
+  environment:
+    name: stg
+  only:
+    - master
+
+.prod_template: &prod_environment
+  variables:
+    ENV: "prod"
+    DOCKER_REGISTRY: dcr.mfb.io
+    NAMESPACE: data-flux
+    KUBE_CONTEXT: ew1p3
+  environment:
+    name: prod
+  only:
+    - master
+
+# -- jobs
+.deploy_template: &deploy_job
+  stage: deploy
+  script:
+    - task docker.build
+    - task spark.helm.deploy
+
+.undeploy_template: &undeploy_job
+  stage: rollback
+  script:
+    - task spark.helm.undeploy
+
+# -------------------------------------------------------
+# -- process:deploying a feature branch in the cloud (DEV)
+# -------------------------------------------------------
+deploy-dev:
+  <<: *image_definition
+  <<: *dev_environment
+  <<: *deploy_job
+  <<: *tag_definition_team_runner_dev
+
+undeploy-dev:
+  <<: *image_definition
+  <<: *dev_environment
+  <<: *undeploy_job
+  <<: *tag_definition_team_runner_dev
+  when: manual
+
+# -------------------------------------------------------
+# -- process:deploying current state of master branch in
+# -- the cloud (STG), test integration and may manually
+# -- deploy to PROD
+# -------------------------------------------------------
+deploy-stg:
+  <<: *image_definition
+  <<: *stg_environment
+  <<: *deploy_job
+  <<: *tag_definition_team_runner_dev
+
+undeploy-stg:
+  <<: *image_definition
+  <<: *stg_environment
+  <<: *undeploy_job
+  <<: *tag_definition_team_runner_dev
+  when: manual
+
+deploy-prod:
+  <<: *image_definition
+  <<: *prod_environment
+  <<: *deploy_job
+  <<: *tag_definition_team_runner_prod
+  when: manual
+
+undeploy-prod:
+  <<: *image_definition
+  <<: *prod_environment
+  <<: *undeploy_job
+  <<: *tag_definition_team_runner_prod
+  when: manual

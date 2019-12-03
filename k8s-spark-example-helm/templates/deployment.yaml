@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "spark-driver.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "spark-driver.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "spark-driver.selectorLabels" . | nindent 8 }}
+    {{- if and (.Values.datadog.enabled) }}
+      annotations:
+        ad.datadoghq.com/{{ .Release.Name }}.logs: '{{ toJson (fromYaml (tpl (.Files.Get "monitoring/custom_metrics.yaml") .)).logs }}'
+        # label for existing template on file
+        ad.datadoghq.com/{{ .Release.Name }}.check_names: '["spark"]'
+        ad.datadoghq.com/{{ .Release.Name }}.init_configs: '[{{ toJson (fromYaml (tpl (.Files.Get "monitoring/custom_metrics.yaml") .)).init_config }}]'
+        ad.datadoghq.com/{{ .Release.Name }}.instances: '{{ toJson (fromYaml (tpl (.Files.Get "monitoring/custom_metrics.yaml") .)).instances }}'
+    {{- end }}
+    spec:
+      serviceAccountName: {{ include "spark-driver.serviceAccountName" . }}
+      volumes:
+      - name: "{{ .Release.Name }}-configmap"
+        configMap:
+          name: "{{ .Release.Name }}-configmap"
+      containers:
+        - name: {{ .Release.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: {{ .Values.spark_driver.image.repository }}:{{ .Values.spark_driver.image.tag }}
+          imagePullPolicy: {{ .Values.spark_driver.image.pullPolicy }}
+          command:
+            {{- range .Values.spark_driver.container.command }}
+            - {{ .}}
+            {{- end }}
+          args:
+            {{- range .Values.spark_driver.container.args }}
+            - {{ .}}
+            {{- end }}
+          env:
+            {{- range $key, $value := .Values.spark_driver.env }}
+            - name: {{ $key | quote }}
+              value: {{ tpl $value $ | quote }}
+            {{- end }}
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: DRIVER_HOSTNAME
+              value: {{ .Release.Name }}
+            - name: SERVICE_NAME
+              value: {{ .Release.Name }}
+            - name: CONTAINER_IMAGE
+              value: {{ .Values.spark_driver.image.repository }}:{{ .Values.spark_driver.image.tag }}
+          volumeMounts:
+          - name: "{{ .Release.Name }}-configmap"
+            mountPath: "/opt/spark.properties"
+            subPath: "spark.properties"
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            - name: driver-rpc-port
+              containerPort: 7078
+              protocol: TCP
+            - name: blockmanager
+              containerPort: 7079
+              protocol: TCP
+            - name: spark-ui
+              containerPort: 4040
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.spark_driver.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,77 @@
+# https://taskfile.dev
+
+version: '2'
+env:
+  PROJECT_NAME: k8s-spark-example
+  ENV: '{{default "minikube" .ENV}}'
+  DOCKER_REGISTRY: '{{default "ci-dump-dcr.mfb.io" .DOCKER_REGISTRY}}'
+  NAMESPACE: '{{default "default" .NAMESPACE}}'
+vars:
+  KUBE_CONTEXT: '{{default "minikube" .KUBE_CONTEXT}}'
+
+tasks:
+
+  run.local:
+    deps: [set.k8s.context]
+    cmds:
+      - >
+        eval $(minikube docker-env);
+        task docker.build;
+        task spark.helm.deploy
+
+  start.minikube:
+    cmds:
+      - if minikube status | grep Running; then echo "minikube running..."; else echo "starting minikube"; minikube start; fi
+
+  default:
+    cmds:
+      - echo 'executed on {{if ne .KUBE_CONTEXT "minikube"}}remote{{else}}local{{end}}'
+    silent: true
+
+  docker.build:
+    deps: [set.k8s.context]
+    cmds: 
+      - docker build -t $DOCKER_REGISTRY/data/$PROJECT_NAME:latest .
+      - '{{if ne .KUBE_CONTEXT "minikube"}}docker push $DOCKER_REGISTRY/data/$PROJECT_NAME:latest{{end}}'
+
+  spark.helm.deploy:
+    deps: [set.k8s.context]
+    cmds:
+      - >
+        {{$helm_chart_name := .HELM_CHART_NAME}}
+        {{range $service := .SERVICES | trim | split " " -}}
+          helm upgrade {{$service}} {{$helm_chart_name}} \
+            --namespace $NAMESPACE \
+            --install \
+            --set-string spark_driver.image.repository=$DOCKER_REGISTRY/data/$PROJECT_NAME \
+            --set-string spark_driver.image.tag=latest \
+            --force \
+            --values ./helm-values/{{$service}}-helm-values/values-$ENV.yaml;
+        {{end}}
+    vars:
+      HELM_CHART_NAME: k8s-spark-example-helm
+      SERVICES: |-
+        k8s-spark-example
+
+  spark.helm.undeploy:
+    deps: [set.k8s.context]
+    cmds:
+      - >
+        {{range $service := .SERVICES | trim | split " " -}}
+          helm uninstall --namespace $NAMESPACE {{$service}}
+        {{end}}
+    vars:
+      SERVICES: |-
+        k8s-spark-example
+
+  set.k8s.context:
+    cmds:
+      - kubectl config set-context {{.KUBE_CONTEXT}} --namespace=$NAMESPACE
+      - kubectl config use-context {{.KUBE_CONTEXT}} --namespace=$NAMESPACE
+
+  airflow.dags.deploy:
+    deps: [set.k8s.context]
+    cmds:
+      - >
+        kubectl -n $NAMESPACE get pods -o jsonpath="{.items[0].metadata.name}" -l 
+        app=airflow | xargs -I {} kubectl -n $NAMESPACE cp dags/historical_process.py {}:/usr/local/airflow/dags/

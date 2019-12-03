@@ -1,0 +1,6 @@
+init_configs: {}
+logs: []
+instances:
+  - spark_url: "http://%%host%%:4040"
+    spark_cluster_mode: "spark_kubernetes_mode"
+    cluster_name: k8s-spark

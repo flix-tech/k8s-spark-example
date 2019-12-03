@@ -1,0 +1,46 @@
+# Default values for spark.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+spark_driver:
+  image:
+    repository: ci-dump-dcr.mfb.io/data/k8s-spark-example
+    tag: to_be_overwrite
+    pullPolicy: IfNotPresent
+  env:
+    ENV: dev
+    APP_FILE: /opt/example/python/pi.py
+  resources:
+    limits:
+      memory: 524Mi
+    requests:
+      memory: 524Mi
+
+spark_properties: |-
+  spark.executor.instances=1
+  spark.kubernetes.allocation.batch.size=5
+  spark.kubernetes.allocation.batch.delay=1s
+  spark.kubernetes.authenticate.driver.serviceAccountName=spark
+  spark.kubernetes.executor.lostCheck.maxAttempts=10  
+  spark.kubernetes.submission.waitAppCompletion=false 
+  spark.kubernetes.report.interval=1s 
+  spark.kubernetes.pyspark.pythonVersion=3
+  spark.pyspark.python=/usr/bin/python3
+
+  #kubernetes resource managements
+  spark.kubernetes.driver.request.cores=10m
+  spark.kubernetes.executor.request.cores=50m
+  spark.executor.memory=500m
+  spark.kubernetes.memoryOverheadFactor=0.1
+
+  spark.kubernetes.executor.annotation.cluster-autoscaler.kubernetes.io/safe-to-evict=true
+  spark.sql.streaming.metricsEnabled=true
+
+serviceAccount:
+  create: false
+  name: spark
+
+service:
+  type: ClusterIP
+

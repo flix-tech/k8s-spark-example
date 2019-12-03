@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-configmap
+data:
+  custom_metrics.yaml: |-
+{{ tpl (.Files.Get "monitoring/custom_metrics.yaml") . | printf "%s" | indent 4}}
+  spark.properties: |-
+    #don't remove this line
+    {{.Values.spark_properties | indent 4}}
