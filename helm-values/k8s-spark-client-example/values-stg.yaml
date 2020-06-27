@@ -10,7 +10,7 @@ spark_driver:
     pullPolicy: IfNotPresent
   env:
     ENV: dev
-    APP_FILE: /opt/example/python/pi.py
+    PYTHON_FILE: /workspace/python/pi.py
   resources:
     limits:
       memory: 524Mi

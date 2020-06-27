@@ -6,7 +6,7 @@ ENV: local
 
 replicaCount: 1
 spark_driver:
-  mode: cluster
+  mode: client
   local_checkpoint:
     enabled: false
     size: 1Gi
@@ -14,6 +14,8 @@ spark_driver:
     repository: ci-dcr.flix.tech/data/flux/cujo-raw-to-master-spark
     tag: to_be_overwrite
     pullPolicy: IfNotPresent
+  env:
+    PY_FILES: /workspace/dist/libs.zip,/workspace/dist/dependencies.zip
   container:
     command: []
     args: []
@@ -22,7 +24,7 @@ spark_driver:
       memory: 524Mi
     requests:
       memory: 524Mi
-  iamRoleArn: arn:aws:iam::411389651876:role/flixos/k8s/cujo-raw-to-master-spark-dev
+  iamRoleArn: arn:aws:iam::xxxxxx:role/xxxxx
 
 spark_properties: |-
   spark.executor.instances=1
