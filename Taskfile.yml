@@ -1,22 +1,54 @@
 # https://taskfile.dev
 
 version: '2'
+
+includes:
+#  dags: ./dags
+  docker: ./TaskfileDocker.yml
+
 env:
-  PROJECT_NAME: k8s-spark-example
+  DOCKER_IMAGE: k8s-spark-example
   ENV: '{{default "minikube" .ENV}}'
-  DOCKER_REGISTRY: '{{default "ci-dump-dcr.mfb.io" .DOCKER_REGISTRY}}'
+  DOCKER_REGISTRY: '{{default "dcr.flix.tech" .DOCKER_REGISTRY}}'
   NAMESPACE: '{{default "default" .NAMESPACE}}'
+  COMMIT:
+    sh: git rev-parse --short HEAD
+
 vars:
   KUBE_CONTEXT: '{{default "minikube" .KUBE_CONTEXT}}'
+  HELM_CHART_NAME: k8s-spark-example-helm
+  DEFAULT_SERVICES: |-
+    k8s-spark-example
 
 tasks:
+
+  clean-pyc:
+    cmds:
+      - find . -name '*.pyc' -exec rm -f {} +
+      - find . -name '*.pyo' -exec rm -f {} +
+      - find . -name '*~' -exec rm -f {} +
+      - find . -name '__pycache__' -exec rm -fr {} +
+
+  clean-pip:
+    cmds:
+      - pip freeze | xargs pip uninstall -y
+
+  lint:
+    cmds:
+      - pylint --exit-zero python
+
+  format:
+    cmds:
+      - pip install pre-commit
+      - pre-commit install
+      - pre-commit run --all-files
 
   run.local:
     deps: [set.k8s.context]
     cmds:
-      - >
-        eval $(minikube docker-env);
-        task docker.build;
+      - |
+        eval $(minikube docker-env)
+        task docker:build
         task spark.helm.deploy
 
   start.minikube:
@@ -28,50 +60,62 @@ tasks:
       - echo 'executed on {{if ne .KUBE_CONTEXT "minikube"}}remote{{else}}local{{end}}'
     silent: true
 
-  docker.build:
-    deps: [set.k8s.context]
-    cmds: 
-      - docker build -t $DOCKER_REGISTRY/data/$PROJECT_NAME:latest .
-      - '{{if ne .KUBE_CONTEXT "minikube"}}docker push $DOCKER_REGISTRY/data/$PROJECT_NAME:latest{{end}}'
-
   spark.helm.deploy:
+    summary: |
+      When run locally, you need to specify environment variables
+      eg. KUBE_CONTEXT=ew1p3 NAMESPACE=data-flux ENV=prod SERVICES=k8s-spark-example task spark.helm.deploy
     deps: [set.k8s.context]
     cmds:
       - >
         {{$helm_chart_name := .HELM_CHART_NAME}}
-        {{range $service := .SERVICES | trim | split " " -}}
+        {{range $service := .SERVICES | trim | splitLines -}}
           helm upgrade {{$service}} {{$helm_chart_name}} \
             --namespace $NAMESPACE \
             --install \
-            --set-string spark_driver.image.repository=$DOCKER_REGISTRY/data/$PROJECT_NAME \
-            --set-string spark_driver.image.tag=latest \
+            --atomic \
+            --cleanup-on-fail \
             --force \
-            --values ./helm-values/{{$service}}-helm-values/values-$ENV.yaml;
+            --history-max 3 \
+            --wait \
+            --timeout 60s \
+            --set-string spark_driver.image.repository=$DOCKER_REGISTRY/data/flux/$DOCKER_IMAGE \
+            --set-string spark_driver.image.tag=$COMMIT \
+            --values ./helm-values/{{$service}}/values-$ENV.yaml;
         {{end}}
     vars:
-      HELM_CHART_NAME: k8s-spark-example-helm
-      SERVICES: |-
-        k8s-spark-example
+      SERVICES: "{{default .DEFAULT_SERVICES .SERVICES}}"
 
-  spark.helm.undeploy:
+  spark.helm.template:
     deps: [set.k8s.context]
     cmds:
       - >
-        {{range $service := .SERVICES | trim | split " " -}}
+        {{$helm_chart_name := .HELM_CHART_NAME}}
+        {{range $service := .SERVICES | trim | splitLines -}}
+          helm template {{$service}} {{$helm_chart_name}} \
+            --namespace $NAMESPACE \
+            --set-string spark_driver.image.repository=$DOCKER_REGISTRY/data/flux/$DOCKER_IMAGE \
+            --set-string spark_driver.image.tag=$COMMIT \
+            --values ./helm-values/{{$service}}/values-$ENV.yaml;
+        {{end}}
+    vars:
+      SERVICES: "{{default .DEFAULT_SERVICES .SERVICES}}"
+
+
+  spark.helm.undeploy:
+    summary: |
+      When run locally, you need to specify environment variables
+      eg. KUBE_CONTEXT=ew1p3 NAMESPACE=data-flux ENV=prod SERVICES=k8s-spark-example task spark.helm.undeploy
+
+    deps: [set.k8s.context]
+    cmds:
+      - >
+        {{range $service := .SERVICES | trim | splitLines -}}
           helm uninstall --namespace $NAMESPACE {{$service}}
         {{end}}
     vars:
-      SERVICES: |-
-        k8s-spark-example
+      SERVICES: "{{default .DEFAULT_SERVICES .SERVICES}}"
 
   set.k8s.context:
     cmds:
       - kubectl config set-context {{.KUBE_CONTEXT}} --namespace=$NAMESPACE
       - kubectl config use-context {{.KUBE_CONTEXT}} --namespace=$NAMESPACE
-
-  airflow.dags.deploy:
-    deps: [set.k8s.context]
-    cmds:
-      - >
-        kubectl -n $NAMESPACE get pods -o jsonpath="{.items[0].metadata.name}" -l 
-        app=airflow | xargs -I {} kubectl -n $NAMESPACE cp dags/historical_process.py {}:/usr/local/airflow/dags/
