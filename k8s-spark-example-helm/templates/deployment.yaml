@@ -31,7 +31,9 @@ spec:
       tolerations:
       - key: "node-role.kubernetes.io/spot"
         operator: "Exists"
+      {{- if ne .Values.spark_driver.mode "local" }}
       serviceAccountName: {{ include "spark-driver.serviceAccountName" . }}
+      {{- end }}
       volumes:
       - name: "{{ .Release.Name }}-configmap"
         configMap:

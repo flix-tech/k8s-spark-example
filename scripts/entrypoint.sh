@@ -21,7 +21,7 @@ function ensure() {
     fi
 }
 
-function ensure_clustermode() {
+function ensure_clientmode() {
     ensure KUBERNETES_SERVICE_HOST
     ensure KUBERNETES_SERVICE_PORT
     ensure SERVICE_NAME
@@ -55,8 +55,8 @@ case "${SPARK_MODE}" in
     --py-files $PY_FILES \
     $PYTHON_FILE
     ;;
-  cluster)
-    ensure_clustermode;
+  client)
+    ensure_clientmode;
     #spark-submit excecuted to spin up spark driver
     #MY_POD_NAMESPACE/MY_POD_IP/MY_POD_IP get from pod inspection in deployment/pod
     #KUBERNETES_SERVICE_HOST/KUBERNETES_SERVICE_PORT are native k8s pod env variables
@@ -74,8 +74,6 @@ case "${SPARK_MODE}" in
     --conf spark.driver.port=$SPARK_DRIVER_PORT \
     --conf spark.kubernetes.container.image=$CONTAINER_IMAGE \
     --conf spark.pyspark.driver.python=/usr/bin/python3 \
-#--conf 'spark.driver.extraJavaOptions=-Dlog4j.configuration=file:/opt/spark/conf/log4j.properties' \
-#--conf 'spark.executor.extraJavaOptions=-Dlog4j.configuration=file:/opt/spark/conf/log4j.properties' \
     --properties-file $PROPERTIES_FILE \
     --py-files $PY_FILES \
     $PYTHON_FILE

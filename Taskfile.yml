@@ -18,7 +18,8 @@ vars:
   KUBE_CONTEXT: '{{default "minikube" .KUBE_CONTEXT}}'
   HELM_CHART_NAME: k8s-spark-example-helm
   DEFAULT_SERVICES: |-
-    k8s-spark-example
+    k8s-spark-local-example
+    k8s-spark-client-example
 
 tasks:
 

@@ -5,12 +5,12 @@
 replicaCount: 1
 spark_driver:
   image:
-    repository: ci-dump-dcr.mfb.io/data/k8s-spark-example
+    repository: dcr.mfb.io/data/k8s-spark-example
     tag: to_be_overwrite
     pullPolicy: IfNotPresent
   env:
     ENV: dev
-    APP_FILE: /opt/example/python/pi.py
+    PYTHON_FILE: /workspace/python/pi.py
   resources:
     limits:
       memory: 524Mi
