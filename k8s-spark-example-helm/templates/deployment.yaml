@@ -4,8 +4,13 @@ metadata:
   name: {{ .Release.Name }}
   labels:
     {{- include "spark-driver.labels" . | nindent 4 }}
+  annotations:
+    kubernetes.io/change-cause: "{{ .Values.spark_driver.image.repository }}:{{ .Values.spark_driver.image.tag }}"
+    downscaler/uptime: always
 spec:
   replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "spark-driver.selectorLabels" . | nindent 6 }}
@@ -13,20 +18,29 @@ spec:
     metadata:
       labels:
         {{- include "spark-driver.selectorLabels" . | nindent 8 }}
-    {{- if and (.Values.datadog.enabled) }}
+    {{- if .Values.datadog.enabled }}
       annotations:
+        iam.amazonaws.com/role: {{ .Values.spark_driver.iamRoleArn }}
         ad.datadoghq.com/{{ .Release.Name }}.logs: '{{ toJson (fromYaml (tpl (.Files.Get "monitoring/custom_metrics.yaml") .)).logs }}'
         # label for existing template on file
-        ad.datadoghq.com/{{ .Release.Name }}.check_names: '["spark"]'
+        ad.datadoghq.com/{{ .Release.Name }}.check_names: '["spark"]'  # becomes instance tag in datadog
         ad.datadoghq.com/{{ .Release.Name }}.init_configs: '[{{ toJson (fromYaml (tpl (.Files.Get "monitoring/custom_metrics.yaml") .)).init_config }}]'
         ad.datadoghq.com/{{ .Release.Name }}.instances: '{{ toJson (fromYaml (tpl (.Files.Get "monitoring/custom_metrics.yaml") .)).instances }}'
     {{- end }}
     spec:
+      tolerations:
+      - key: "node-role.kubernetes.io/spot"
+        operator: "Exists"
       serviceAccountName: {{ include "spark-driver.serviceAccountName" . }}
       volumes:
       - name: "{{ .Release.Name }}-configmap"
         configMap:
           name: "{{ .Release.Name }}-configmap"
+      {{- if .Values.spark_driver.local_checkpoint.enabled }}
+      - name: "{{ .Release.Name }}-checkpoint"
+        persistentVolumeClaim:
+          claimName: "{{ .Release.Name }}-checkpoint"
+      {{- end }}
       containers:
         - name: {{ .Release.Name }}
           securityContext:
@@ -58,16 +72,20 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            - name: DRIVER_HOSTNAME
-              value: {{ .Release.Name }}
             - name: SERVICE_NAME
               value: {{ .Release.Name }}
             - name: CONTAINER_IMAGE
               value: {{ .Values.spark_driver.image.repository }}:{{ .Values.spark_driver.image.tag }}
+            - name: SPARK_MODE
+              value: {{ .Values.spark_driver.mode | quote }}
           volumeMounts:
           - name: "{{ .Release.Name }}-configmap"
             mountPath: "/opt/spark.properties"
             subPath: "spark.properties"
+          {{- if .Values.spark_driver.local_checkpoint.enabled }}
+          - name: "{{ .Release.Name }}-checkpoint"
+            mountPath: {{ .Values.spark_driver.env.CHECKPOINT_LOCATION}}
+          {{- end }}
           ports:
             - name: http
               containerPort: 80

@@ -1,0 +1,19 @@
+{{- if and .Values.spark_driver.local_checkpoint.enabled .Values.replicaCount }}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ .Release.Name }}-checkpoint
+  labels:
+    {{- include "spark-driver.labels" . | nindent 4 }}
+#waiting https://github.com/helm/helm/pull/7649 release to manage pvc correctly
+  annotations:
+#    "helm.sh/resource-policy": keep
+    meta.helm.sh/release-name: {{ .Release.Name }}
+    meta.helm.sh/release-namespace: {{.Release.Namespace}}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.spark_driver.local_checkpoint.size | quote }}
+{{- end }}

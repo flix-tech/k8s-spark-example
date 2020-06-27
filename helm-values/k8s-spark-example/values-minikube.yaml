@@ -5,12 +5,14 @@
 replicaCount: 1
 spark_driver:
   image:
-    repository: ci-dump-dcr.mfb.io/data/k8s-spark-example
+    repository: to_be_overwrite
     tag: to_be_overwrite
     pullPolicy: IfNotPresent
   env:
     ENV: minikube
-    APP_FILE: /opt/example/python/pi.py
+    PYTHON_FILE: /workspace/python/pi.py
+    PY_FILES: /workspace/dist/libs.zip,/workspace/dist/dependencies.zip
+
   resources:
     limits:
       memory: 524Mi
@@ -38,7 +40,7 @@ spark_properties: |-
   spark.sql.streaming.metricsEnabled=true
 
 serviceAccount:
-  create: false
+  create: true
   name: spark
 
 service:

@@ -2,23 +2,27 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
+ENV: local
+
 replicaCount: 1
 spark_driver:
+  mode: cluster
+  local_checkpoint:
+    enabled: false
+    size: 1Gi
   image:
-    repository: ci-dump-dcr.mfb.io/data/k8s-spark-example
+    repository: ci-dcr.flix.tech/data/flux/cujo-raw-to-master-spark
     tag: to_be_overwrite
     pullPolicy: IfNotPresent
   container:
     command: []
     args: []
-  env:
-    ENV: minikube
-    APP_FILE: /opt/example/python/pi.py
   resources:
     limits:
       memory: 524Mi
     requests:
       memory: 524Mi
+  iamRoleArn: arn:aws:iam::411389651876:role/flixos/k8s/cujo-raw-to-master-spark-dev
 
 spark_properties: |-
   spark.executor.instances=1
@@ -26,9 +30,9 @@ spark_properties: |-
   spark.kubernetes.allocation.batch.size=5
   spark.kubernetes.allocation.batch.delay=1s
   spark.kubernetes.authenticate.driver.serviceAccountName=spark
-  spark.kubernetes.executor.lostCheck.maxAttempts=10  
-  spark.kubernetes.submission.waitAppCompletion=false 
-  spark.kubernetes.report.interval=1s 
+  spark.kubernetes.executor.lostCheck.maxAttempts=10
+  spark.kubernetes.submission.waitAppCompletion=false
+  spark.kubernetes.report.interval=1s
   spark.kubernetes.pyspark.pythonVersion=3
 
   #kubernetes resource managements
