@@ -2,7 +2,11 @@
 
 This is an example project running a Spark app on Kubernetes. It runs a PySpark job as spark driver deployment on Kubernetes. More information [here](https://spark.apache.org/docs/latest/running-on-kubernetes.html).
 
-The application base image relies on the spark image built on [here](https://git.flix.tech/data/flux/web-tracking/spark-on-kubernetes-docker-image).
+This example contains two spark deployment mode:
+* local mode(helm-values/k8s-spark-local-example
+)
+* client mode(helm-values/k8s-spark-client-example
+)
 
 ## run app locally
 

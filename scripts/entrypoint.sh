@@ -2,7 +2,7 @@
 : "${PROPERTIES_FILE:="/opt/spark.properties"}"
 : "${SPARK_DRIVER_PORT:="35861"}"
 : "${PYTHON_FILE:="/opt/example/python/pi.py"}"
-: "${SPARK_MODE:="cluster"}"
+: "${SPARK_MODE:="client"}"
 
 export \
   PROPERTIES_FILE \
