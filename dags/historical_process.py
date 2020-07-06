@@ -28,8 +28,11 @@ from airflow.contrib.operators.kubernetes_pod_operator import KubernetesPodOpera
 from airflow.operators.bash_operator import BashOperator
 from airflow.contrib.kubernetes.pod_runtime_info_env import PodRuntimeInfoEnv
 
+DAG_NAME = "historical_process"
+ENV = os.environ.get("ENV")
+
 properties = """
-spark.executor.instances=1
+spark.executor.instances=6
 spark.kubernetes.allocation.batch.size=5
 spark.kubernetes.allocation.batch.delay=1s
 spark.kubernetes.authenticate.driver.serviceAccountName=spark
@@ -49,13 +52,13 @@ spark.kubernetes.executor.annotation.cluster-autoscaler.kubernetes.io/safe-to-ev
 spark.sql.streaming.metricsEnabled=true
 """
 
-historical_process_image = "ci-dump-dcr.mfb.io/data/k8s-spark-example:latest"
+historical_process_image = "dcr.flix.tech/data/flux/k8s-spark-example:latest"
 
 envs = {
-"SERVICE_NAME": f"historical_process_{os.environ.get('ENV')}",
+"SERVICE_NAME": f"historical_process_{ENV}",
 "CONTAINER_IMAGE": historical_process_image,
 "SPARK_DRIVER_PORT": "35000",
-"APP_FILE": "/opt/example/python/pi.py",
+"APP_FILE": "/workspace/python/pi.py",
 }
 
 pod_runtime_info_envs = [
@@ -85,34 +88,15 @@ args = {
 }
 
 with DAG(
-    dag_id='example_historical_process',
+    dag_id=DAG_NAME,
     default_args=args,
-    schedule_interval='0 0 * * *'
+    schedule_interval='30 0 * * *'
 ) as dag:
 
-    tolerations = [{
-        'key': 'dedicated',
-        'operator': 'Equal',
-        'value': 'airflow'
-    }]
-
-    def print_stuff():  # pylint: disable=missing-docstring
-        print("hello world!")
-
-    one_task = PythonOperator(
-        task_id="one_task",
-        python_callable=print_stuff
-    )
-
-    # Use the zip binary, which is only found in this special docker image
-    two_task = BashOperator(
-        task_id='two_task',
-        bash_command='kubectl get pod')
-
     # Limit resources on this operator/task with node affinity & tolerations
-    historical_process_1 = KubernetesPodOperator(
+    historical_process = KubernetesPodOperator(
         namespace=os.environ['AIRFLOW__KUBERNETES__NAMESPACE'],
-        name="historical-process-1",
+        name="historical-process",
         image=historical_process_image,
         image_pull_policy="IfNotPresent",
         cmds=["/bin/sh","-c"],
@@ -127,7 +111,7 @@ with DAG(
         is_delete_operator_pod=True,
         in_cluster=True,
         hostnetwork=False,
-        #important env vars to run spark submit in task file
+        #important env vars to run spark submit
         pod_runtime_info_envs=pod_runtime_info_envs
     )
-    [one_task, two_task, historical_process_1]
+    historical_process

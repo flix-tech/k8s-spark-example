@@ -39,12 +39,15 @@ tasks:
   tag_push:
     cmds:
       - >
-        {{if ne .KUBE_CONTEXT "minikube"}}
-          {{range $t := .TAGS | trim | splitLines -}}
-              docker tag $DOCKER_REGISTRY/data/flux/$DOCKER_IMAGE:$COMMIT {{$t}};
-              docker push {{$t}}
-          {{end}}
+        {{if eq .KUBE_CONTEXT "minikube"}}eval $(minikube docker-env){{end}}
+        {{$kube_context := .KUBE_CONTEXT}}
+        {{range $t := .TAGS | trim | splitLines -}}
+            docker tag $DOCKER_REGISTRY/data/flux/$DOCKER_IMAGE:$COMMIT {{$t}};
+            {{if ne $kube_context "minikube"}}
+            docker push {{$t}}
+            {{end}}
         {{end}}
     vars:
       TAGS: |
         "$DOCKER_REGISTRY/data/flux/$DOCKER_IMAGE:$COMMIT"
+        "$DOCKER_REGISTRY/data/flux/$DOCKER_IMAGE:latest"

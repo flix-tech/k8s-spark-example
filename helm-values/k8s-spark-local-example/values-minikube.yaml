@@ -12,8 +12,6 @@ spark_driver:
   env:
     ENV: minikube
     PYTHON_FILE: /workspace/python/pi.py
-    PY_FILES: /workspace/dist/libs.zip,/workspace/dist/dependencies.zip
-
   resources:
     limits:
       memory: 524Mi

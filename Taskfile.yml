@@ -2,10 +2,6 @@
 
 version: '2'
 
-includes:
-#  dags: ./dags
-  docker: ./TaskfileDocker.yml
-
 env:
   DOCKER_IMAGE: k8s-spark-example
   ENV: '{{default "minikube" .ENV}}'
@@ -20,6 +16,10 @@ vars:
   DEFAULT_SERVICES: |-
     k8s-spark-local-example
     k8s-spark-client-example
+
+includes:
+  dags: ./dags
+  docker: ./TaskfileDocker.yml
 
 tasks:
 
