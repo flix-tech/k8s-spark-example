@@ -12,92 +12,82 @@ tasks:
     silent: true
     vars:
       DAG_FILE:
-        sh: echo $(pwd)/dags/spark_historical_process_localmode_v3.py
+        sh: echo $(pwd)/dags/spark_batch_job_distributed_mode.py
 
-######## raw to master dag tasks #########
-  historical_process.deploy:
-    cmds:
-      - task: single_deploy
-        vars:
-          FILES: |-
-            dags/historical_process.py
-
-  historical_process.undeploy:
-    cmds:
-      - task: single_undeploy
-        vars:
-          FILES: |-
-            dags/historical_process.py
-
-  historical_process.backfill:
+  backfill:
     summary: |
-       When run locally, you need to specify environment variables
-       eg. KUBE_CONTEXT=ew1p3 NAMESPACE=data-flux ENV=prod task dags:historical_process.backfill
+      When run locally, you need to specify environment variables
+      eg. KUBE_CONTEXT=ew1p3 NAMESPACE=data-flux ENV=prod DAG_NAME=spark_batch_job_distributed_mode task dags:backfill
+
     cmds:
-      - |
-        kubectl exec deploy/airflow -- airflow backfill "{{.DAG_NAME}}" --start_date "{{.START_DATE}}" --end_date "{{.END_DATE}}" --reset_dagruns -y;
+      - kubectl exec deploy/airflow -- airflow backfill "{{.DAG_NAME}}" --start_date "{{.START_DATE}}" --end_date "{{.END_DATE}}"    --rerun_failed_tasks
     vars:
       START_DATE:
-        '{{default "2020-06-02" .START_DATE}}'
+        '{{default "2020-07-26" .START_DATE}}'
       END_DATE:
-        '{{default "2020-06-03" .END_DATE}}'
-      DAG_NAME: historical_process
+        '{{default "2020-07-30" .END_DATE}}'
+      DAG_NAME:
+        '{{default "spark_batch_job_distributed_mode" .DAG_NAME}}'
 
-  historical_process.daily.reprocess:
+  package:
     summary: |
-       When run locally, you need to specify environment variables
-       eg. KUBE_CONTEXT=ew1p3 NAMESPACE=data-flux ENV=prod task dags:historical_process.daily.reprocess
+      When run locally, you need to specify environment variables
+      eg. DAG_NAME=spark_batch_job_distributed_mode task dags:package
+    dir: ./dags
     cmds:
-      - task: :set.k8s.context
-      - task: historical_process.deploy
-      - task: historical_process.backfill
-        vars:
-          START_DATE:
-            # date 5 days ago in format YEAR-MONTH-DAY
-            sh: echo {{now | date_modify "-120h" | date "2006-01-02"}}
-          END_DATE:
-            # date 4 days ago in format YEAR-MONTH-DAY
-            sh: echo {{now | date_modify "-96h" | date "2006-01-02"}}
-
-  ############## combined dags operations #############
-  deploy:
-    summary: |
-      Deploy all dags to airflow, it does not include dags run
-
-      It include lists of dags to deploy
-    cmds:
-      - task: :set.k8s.context
-      - echo $NAMESPACE
-      - task: historical_process.deploy
-
-  undeploy:
-    summary: |
-      Undeploy all dags files and its dependencies from airflow
-    cmds:
-      - task: :set.k8s.context
-      - task: historical_process.undeploy
+      - mkdir -p dist
+      - zip -r dist/{{.DAG_NAME}}.zip {{.FILES}} -MM {{.DAG_NAME}}.py
+    vars:
+      DAG_NAME: '{{default "__TO_BE_SET__" .DAG_NAME}}'
+      FILES:
+        ./shared
+        ./plain_files
 
   single_deploy:
+    summary: |
+      When run locally, you need to specify environment variables
+      eg. DAG_NAME=spark_batch_job_distributed_mode NAMESPACE=data-flux KUBE_CONTEXT=prod task dags:single_deploy
+    dir: ./dags
     cmds:
-      - >
-        {{range $f := .FILES | trim | splitLines -}}
-            dir=$(dirname {{$f}})
-            kubectl exec deploy/airflow -- mkdir -p $dir
-            kubectl -n $NAMESPACE cp $(pwd)/{{$f}} $AIRFLOW_POD_NAME:$REMOTE_DAG_FOLDER/{{$f}}
-        {{end}}
+      - task: package
+      - task: :set.k8s.context
+      - kubectl -n $NAMESPACE cp $(pwd)/dist/{{.DAG_NAME}}.zip $AIRFLOW_POD_NAME:$REMOTE_DAG_FOLDER/dags/{{.DAG_NAME}}.zip
     vars:
-      FILES: |-
-        '{{default "__TO_BE_SET__" .FILES}}'
+      DAG_NAME: |-
+        '{{default "__TO_BE_SET__" .DAG_NAME}}'
     env:
       AIRFLOW_POD_NAME:
         sh: kubectl -n $NAMESPACE get pods -o jsonpath="{.items[0].metadata.name}" -l app=airflow || echo "no connection"
 
   single_undeploy:
+    summary: |
+      When run locally, you need to specify environment variables
+      eg. DAG_NAME=spark_batch_job_distributed_mode NAMESPACE=data-flux KUBE_CONTEXT=prod task dags:single_deploy
+    cmds:
+      - task: :set.k8s.context
+      - kubectl exec deploy/airflow --  rm -rfv $REMOTE_DAG_FOLDER/dags/{{.DAG_NAME}}.zip
+    vars:
+      DAG_NAME: |-
+       '{{default "__TO_BE_SET__" .DAG_NAME}}'
+
+  deploy:
+    summary: |
+      Deploy all dags to airflow, it does not include dags run
+      It include lists of dags to deploy
+      NAMESPACE=data-flux-stg task dags:_deploy
     cmds:
       - >
-        {{range $f := .FILES | trim | splitLines -}}
-            kubectl exec deploy/airflow --  rm -rfv $REMOTE_DAG_FOLDER/{{$f}}
+        {{range $d := .DAG_NAMES | trim | splitLines -}}
+            DAG_NAME={{$d}} task dags:single_deploy
         {{end}}
     vars:
-      FILES: |-
-       '{{default "__TO_BE_SET__" .FILES}}'
+      DAG_NAMES: |-
+        spark_batch_job_distributed_mode
+        spark_batch_job_local_mode
+
+  undeploy:
+    summary: |
+      remove all zipped files from airflow remote folder
+      NAMESPACE=data-flux-stg task dags:undeploy
+    cmds:
+      - kubectl exec deploy/airflow --  rm -rfv $REMOTE_DAG_FOLDER/dags/*.zip
