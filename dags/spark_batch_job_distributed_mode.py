@@ -27,38 +27,20 @@ from airflow.operators.python_operator import PythonOperator
 from airflow.contrib.operators.kubernetes_pod_operator import KubernetesPodOperator
 from airflow.operators.bash_operator import BashOperator
 from airflow.contrib.kubernetes.pod_runtime_info_env import PodRuntimeInfoEnv
+from shared.spark_batch_job_distributed_mode_templates import spark_submit_sh
+from shared.utils import read_packaged_file
 
-DAG_NAME = "historical_process"
+DAG_NAME = "spark_batch_job_distributed_mode"
 ENV = os.environ.get("ENV")
 
-properties = """
-spark.executor.instances=6
-spark.kubernetes.allocation.batch.size=5
-spark.kubernetes.allocation.batch.delay=1s
-spark.kubernetes.authenticate.driver.serviceAccountName=spark
-spark.kubernetes.executor.lostCheck.maxAttempts=10
-spark.kubernetes.submission.waitAppCompletion=false
-spark.kubernetes.report.interval=1s
-spark.kubernetes.pyspark.pythonVersion=3
-spark.pyspark.python=/usr/bin/python3
-
-#kubernetes resource managements
-spark.kubernetes.driver.request.cores=10m
-spark.kubernetes.executor.request.cores=50m
-spark.executor.memory=500m
-spark.kubernetes.memoryOverheadFactor=0.1
-
-spark.kubernetes.executor.annotation.cluster-autoscaler.kubernetes.io/safe-to-evict=true
-spark.sql.streaming.metricsEnabled=true
-"""
-
-historical_process_image = "dcr.flix.tech/data/flux/k8s-spark-example:latest"
+docker_image = "dcr.flix.tech/data/flux/k8s-spark-example:latest"
 
 envs = {
-"SERVICE_NAME": f"historical_process_{ENV}",
-"CONTAINER_IMAGE": historical_process_image,
+"SERVICE_NAME": DAG_NAME,
+"CONTAINER_IMAGE": docker_image,
 "SPARK_DRIVER_PORT": "35000",
-"APP_FILE": "/workspace/python/pi.py",
+"PY_FILES": "/workspace/dist/libs.zip,/workspace/dist/dependencies.zip",
+"PYTHON_FILE": "/workspace/python/pi.py",
 }
 
 pod_runtime_info_envs = [
@@ -67,37 +49,31 @@ pod_runtime_info_envs = [
     PodRuntimeInfoEnv('MY_POD_IP','status.podIP')
 ]
 
-spark_submit_sh = f"""
-echo '{properties}' > /tmp/properties;
-/opt/spark/bin/spark-submit \
---master k8s://https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT \
---deploy-mode client \
---name $SERVICE_NAME \
---conf spark.kubernetes.namespace=$MY_POD_NAMESPACE \
---conf spark.kubernetes.driver.pod.name=$MY_POD_NAME \
---conf spark.driver.host=$MY_POD_IP \
---conf spark.driver.port=$SPARK_DRIVER_PORT \
---conf spark.kubernetes.container.image=$CONTAINER_IMAGE \
---properties-file /tmp/properties \
-$APP_FILE
-"""
-
 args = {
     'owner': 'Airflow',
     'start_date': airflow.utils.dates.days_ago(2)
 }
+# base path returned zip dag path
+base_path = os.path.split(__file__)[0]
+
+plain_txt = read_packaged_file(
+    f"{base_path}/plain_files/plain.txt"
+)
 
 with DAG(
     dag_id=DAG_NAME,
     default_args=args,
     schedule_interval='30 0 * * *'
 ) as dag:
-
+    # Use the zip binary, which is only found in this special docker image
+    read_local_file = BashOperator(
+        task_id='read_local_file',
+        bash_command=f"echo {plain_txt}")
     # Limit resources on this operator/task with node affinity & tolerations
-    historical_process = KubernetesPodOperator(
+    spark_batch_job_distributed_mode = KubernetesPodOperator(
         namespace=os.environ['AIRFLOW__KUBERNETES__NAMESPACE'],
-        name="historical-process",
-        image=historical_process_image,
+        name="spark_batch_job_distributed_mode",
+        image=docker_image,
         image_pull_policy="IfNotPresent",
         cmds=["/bin/sh","-c"],
         arguments=[spark_submit_sh],
@@ -107,11 +83,11 @@ with DAG(
             'request_memory': "1024Mi",
             'request_cpu': "100m"
             },
-        task_id="historical-process-1",
+        task_id="spark_batch_job_distributed_mode",
         is_delete_operator_pod=True,
         in_cluster=True,
         hostnetwork=False,
         #important env vars to run spark submit
         pod_runtime_info_envs=pod_runtime_info_envs
     )
-    historical_process
+    read_local_file, spark_batch_job_distributed_mode
